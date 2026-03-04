@@ -1,11 +1,14 @@
 import json
 import httpx
 import os
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Any
 from agent.tools import TOOLS, search_houses, get_house_detail, get_houses_nearby, search_landmark, get_house_listings, \
     get_nearby_landmarks, get_landmarks, get_landmark_by_name, get_landmark_by_id, get_landmark_stats, \
     get_houses_by_community, get_house_stats, rent_house, terminate_rental, take_offline
 from agent.prompts import SYSTEM_PROMPT
+
+# 对话历史最大保留轮数（每轮包含user和assistant两条消息）
+MAX_HISTORY_ROUNDS = 10
 
 TOOL_MAP = {
     "search_houses": search_houses,
@@ -24,6 +27,138 @@ TOOL_MAP = {
     "terminate_rental": terminate_rental,
     "take_offline": take_offline,
 }
+
+
+def compress_tool_result(tool_name: str, result: Dict[str, Any]) -> str:
+    """
+    压缩工具调用结果，只保留关键字段以减少token消耗
+    
+    Args:
+        tool_name: 工具名称
+        result: 工具返回的完整结果
+    
+    Returns:
+        压缩后的JSON字符串
+    """
+    if not isinstance(result, dict):
+        return json.dumps(result, ensure_ascii=False)
+    
+    compressed = {}
+    
+    if tool_name == "search_houses":
+        # 只保留关键字段：总数、房源列表（每个房源只保留ID、价格、区域、tags等关键信息）
+        if "total" in result:
+            compressed["total"] = result["total"]
+        if "houses" in result and isinstance(result["houses"], list):
+            compressed["houses"] = []
+            for house in result["houses"][:10]:  # 最多保留10个房源
+                house_compressed = {
+                    "house_id": house.get("house_id"),
+                    "price": house.get("price"),
+                    "district": house.get("district"),
+                    "area": house.get("area"),
+                    "community": house.get("community"),
+                    "bedrooms": house.get("bedrooms"),
+                    "tags": house.get("tags", [])
+                }
+                compressed["houses"].append(house_compressed)
+    
+    elif tool_name == "get_house_detail":
+        # 只保留关键字段
+        compressed = {
+            "house_id": result.get("house_id"),
+            "price": result.get("price"),
+            "district": result.get("district"),
+            "area": result.get("area"),
+            "community": result.get("community"),
+            "bedrooms": result.get("bedrooms"),
+            "tags": result.get("tags", []),
+            "available": result.get("available")
+        }
+    
+    elif tool_name in ["get_houses_nearby", "get_houses_by_community"]:
+        # 类似search_houses的压缩策略
+        if "total" in result:
+            compressed["total"] = result["total"]
+        if "houses" in result and isinstance(result["houses"], list):
+            compressed["houses"] = []
+            for house in result["houses"][:10]:
+                house_compressed = {
+                    "house_id": house.get("house_id"),
+                    "price": house.get("price"),
+                    "district": house.get("district"),
+                    "area": house.get("area"),
+                    "community": house.get("community"),
+                    "bedrooms": house.get("bedrooms")
+                }
+                compressed["houses"].append(house_compressed)
+    
+    elif tool_name == "search_landmark":
+        # 只保留地标列表的关键信息
+        if "landmarks" in result and isinstance(result["landmarks"], list):
+            compressed["landmarks"] = []
+            for landmark in result["landmarks"][:5]:  # 最多保留5个地标
+                compressed["landmarks"].append({
+                    "landmark_id": landmark.get("landmark_id"),
+                    "name": landmark.get("name"),
+                    "category": landmark.get("category")
+                })
+    
+    elif tool_name == "get_house_listings":
+        # 只保留各平台价格信息
+        if "listings" in result and isinstance(result["listings"], list):
+            compressed["listings"] = []
+            for listing in result["listings"]:
+                compressed["listings"].append({
+                    "platform": listing.get("listing_platform"),
+                    "price": listing.get("price")
+                })
+    
+    else:
+        # 其他工具保留完整结果，但限制大小
+        compressed = result
+    
+    return json.dumps(compressed, ensure_ascii=False)
+
+
+def compress_history(history: List[dict]) -> List[dict]:
+    """
+    压缩对话历史，只保留最近的N轮对话
+    
+    Args:
+        history: 完整的对话历史
+    
+    Returns:
+        压缩后的对话历史
+    """
+    if not history:
+        return []
+    
+    # 计算轮数（每轮包含user和assistant两条消息）
+    rounds = []
+    current_round = []
+    
+    for msg in history:
+        if msg.get("role") == "user":
+            if current_round:
+                rounds.append(current_round)
+            current_round = [msg]
+        elif msg.get("role") in ["assistant", "tool"]:
+            current_round.append(msg)
+    
+    if current_round:
+        rounds.append(current_round)
+    
+    # 只保留最近的N轮
+    if len(rounds) > MAX_HISTORY_ROUNDS:
+        rounds = rounds[-MAX_HISTORY_ROUNDS:]
+    
+    # 展平列表
+    compressed = []
+    for round_msgs in rounds:
+        compressed.extend(round_msgs)
+    
+    return compressed
 
 
 def get_model_ip() -> str:
@@ -120,6 +255,9 @@ async def run_agent(model_ip: Optional[str] = None, history: List[dict] = None, 
     # 如果没有提供history，则使用空列表
     if history is None:
         history = []
+
+    # 压缩对话历史
+    history = compress_history(history)
 
     tool_results = []
 
@@ -220,10 +358,13 @@ async def run_agent(model_ip: Optional[str] = None, history: List[dict] = None, 
                 traceback.print_exc()
 
             tool_results.append({"tool": func_name, "args": func_args_str, "result": result})
+            
+            # 压缩工具调用结果以减少token消耗
+            compressed_result = compress_tool_result(func_name, result)
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc.id,
-                "content": json.dumps(result, ensure_ascii=False)
+                "content": compressed_result
             })
 
     return "处理超时，请重试", tool_results
