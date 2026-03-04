@@ -44,6 +44,28 @@ def compress_tool_result(tool_name: str, result: Dict[str, Any]) -> str:
     if not isinstance(result, dict):
         return json.dumps(result, ensure_ascii=False)
     
+    # 首先检查是否有错误信息
+    if "error" in result:
+        error_msg = result.get("error", "未知错误")
+        # 对于参数错误，提供更友好的提示，引导LLM使用正确的参数
+        if "unexpected keyword argument" in str(error_msg):
+            # 提取错误的参数名
+            import re
+            match = re.search(r"unexpected keyword argument ['\"](.*?)['\"]", str(error_msg))
+            if match:
+                wrong_param = match.group(1)
+                # 返回友好的错误信息，告诉LLM该参数不支持，应该使用其他方式
+                if wrong_param == "tags":
+                    return json.dumps({
+                        "error": "search_houses工具不支持tags参数。特殊需求（如宠物、公园等）应通过get_house_detail查看房源的tags字段来过滤，或使用get_nearby_landmarks查询周边配套。",
+                        "suggestion": "请先调用search_houses获取房源列表，然后对每个房源调用get_house_detail检查tags字段是否符合要求。"
+                    }, ensure_ascii=False)
+        # 其他错误，返回通用提示
+        return json.dumps({
+            "error": f"工具执行失败: {error_msg}",
+            "suggestion": "请检查参数是否正确，或尝试使用其他工具。"
+        }, ensure_ascii=False)
+    
     compressed = {}
     
     # 处理API返回的标准格式：{"code": 0, "message": "success", "data": {...}}
@@ -53,6 +75,14 @@ def compress_tool_result(tool_name: str, result: Dict[str, Any]) -> str:
     if tool_name == "search_houses":
         # 只保留关键字段：总数、房源列表（每个房源只保留ID、价格、区域、tags等关键信息）
         # API返回格式：{"code": 0, "data": {"total": 6, "items": [...]}}
+        # 检查API返回的code，如果code不为0，说明有错误
+        if result.get("code") is not None and result.get("code") != 0:
+            return json.dumps({
+                "error": result.get("message", "API调用失败"),
+                "code": result.get("code"),
+                "suggestion": "请检查搜索条件或稍后重试。"
+            }, ensure_ascii=False)
+        
         if "total" in actual_data:
             compressed["total"] = actual_data["total"]
         # 房源列表可能在 "items" 或 "houses" 字段中
@@ -73,6 +103,11 @@ def compress_tool_result(tool_name: str, result: Dict[str, Any]) -> str:
                         "tags": house.get("tags", [])
                     }
                     compressed["houses"].append(house_compressed)
+        # 如果没有房源，确保返回total=0，让LLM知道这是正常的空结果
+        if "total" not in compressed:
+            compressed["total"] = 0
+        if "houses" not in compressed:
+            compressed["houses"] = []
     
     elif tool_name == "get_house_detail":
         # 只保留关键字段
