@@ -202,7 +202,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search_houses",
-            "description": "按条件筛选房源，支持区域、价格、户型、地铁等筛选，返回结果含tags字段",
+            "description": "按条件筛选房源，返回结果含tags",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -237,7 +237,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_house_detail",
-            "description": "获取房源详情，包括属性、标签等，用于检查特殊需求",
+            "description": "获取房源详情，含tags",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -251,7 +251,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_houses_nearby",
-            "description": "查询地标附近房源，适合'XX地铁站附近'需求。不支持rental_type，需整租/合租筛选用search_houses",
+            "description": "查询地标附近房源，不支持rental_type筛选",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -269,7 +269,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search_landmark",
-            "description": "搜索地标获取ID和位置",
+            "description": "搜索地标",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -285,7 +285,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_house_listings",
-            "description": "获取房源各平台挂牌记录，用于核验价格",
+            "description": "获取房源各平台价格",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -299,7 +299,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_nearby_landmarks",
-            "description": "查询小区周边商超、公园等配套设施",
+            "description": "查询小区周边配套",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -315,7 +315,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_landmarks",
-            "description": "获取地标列表，支持category、district筛选",
+            "description": "获取地标列表",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -329,7 +329,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_landmark_by_name",
-            "description": "按名称精确查询地标，返回ID和位置",
+            "description": "按名称查询地标",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -343,7 +343,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_landmark_by_id",
-            "description": "按ID查询地标详情",
+            "description": "按ID查询地标",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -357,7 +357,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_landmark_stats",
-            "description": "获取地标统计信息",
+            "description": "地标统计",
             "parameters": {
                 "type": "object",
                 "properties": {}
@@ -368,7 +368,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_houses_by_community",
-            "description": "按小区名查询可租房源，用于指代消解",
+            "description": "按小区名查询房源",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -385,7 +385,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "get_house_stats",
-            "description": "获取房源统计信息",
+            "description": "房源统计",
             "parameters": {
                 "type": "object",
                 "properties": {}
@@ -396,7 +396,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "rent_house",
-            "description": "租房操作，需指定平台",
+            "description": "租房",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -411,7 +411,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "terminate_rental",
-            "description": "退租操作，需指定平台",
+            "description": "退租",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -426,7 +426,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "take_offline",
-            "description": "下架操作，需指定平台",
+            "description": "下架",
             "parameters": {
                 "type": "object",
                 "properties": {

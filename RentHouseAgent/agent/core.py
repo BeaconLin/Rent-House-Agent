@@ -9,7 +9,7 @@ from agent.tools import TOOLS, search_houses, get_house_detail, get_houses_nearb
 from agent.prompts import SYSTEM_PROMPT
 
 # 对话历史最大保留轮数（每轮包含user和assistant两条消息）
-MAX_HISTORY_ROUNDS = 10
+MAX_HISTORY_ROUNDS = 5  # 从10减少到5，减少token消耗
 
 TOOL_MAP = {
     "search_houses": search_houses,
@@ -59,7 +59,7 @@ def compress_tool_result(tool_name: str, result: Dict[str, Any]) -> str:
         houses_list = actual_data.get("items") or actual_data.get("houses")
         if houses_list and isinstance(houses_list, list):
             compressed["houses"] = []
-            for house in houses_list[:10]:  # 最多保留10个房源
+            for house in houses_list[:5]:  # 最多保留5个房源（从10减少到5）
                 # 只添加有有效house_id的房源
                 house_id = house.get("house_id")
                 if house_id:  # 确保house_id不为None或空字符串
@@ -97,7 +97,7 @@ def compress_tool_result(tool_name: str, result: Dict[str, Any]) -> str:
         houses_list = actual_data.get("items") or actual_data.get("houses")
         if houses_list and isinstance(houses_list, list):
             compressed["houses"] = []
-            for house in houses_list[:10]:
+            for house in houses_list[:5]:  # 最多保留5个房源（从10减少到5）
                 # 只添加有有效house_id的房源
                 house_id = house.get("house_id")
                 if house_id:  # 确保house_id不为None或空字符串
@@ -117,7 +117,7 @@ def compress_tool_result(tool_name: str, result: Dict[str, Any]) -> str:
         landmarks_list = actual_data.get("landmarks")
         if landmarks_list and isinstance(landmarks_list, list):
             compressed["landmarks"] = []
-            for landmark in landmarks_list[:5]:  # 最多保留5个地标
+            for landmark in landmarks_list[:3]:  # 最多保留3个地标（从5减少到3）
                 compressed["landmarks"].append({
                     "landmark_id": landmark.get("landmark_id"),
                     "name": landmark.get("name"),
@@ -303,7 +303,8 @@ async def build_llm_client(
                 tool_choice="auto",
                 temperature=0.1,  # 降低温度以获得更确定性的输出
                 stream=False,
-                top_p=0.9  # 添加top_p参数进一步限制输出范围
+                top_p=0.9,  # 添加top_p参数进一步限制输出范围
+                max_tokens=500  # 限制最大输出token数，减少token消耗
             )
             
             # 成功则关闭客户端并返回
@@ -419,8 +420,8 @@ async def run_agent(model_ip: Optional[str] = None, history: List[dict] = None, 
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [{"role": "user", "content": user_message}]
 
-    # 最多迭代5轮工具调用
-    for _ in range(5):
+    # 最多迭代3轮工具调用（从5减少到3，减少模型调用次数）
+    for _ in range(3):
         # 使用原有的OpenAI客户端
         print(f"iteration times:{_}")
         try:
