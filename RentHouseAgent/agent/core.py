@@ -45,59 +45,78 @@ def compress_tool_result(tool_name: str, result: Dict[str, Any]) -> str:
     
     compressed = {}
     
+    # 处理API返回的标准格式：{"code": 0, "message": "success", "data": {...}}
+    # 如果存在data字段，则从data中提取实际数据
+    actual_data = result.get("data", result) if "data" in result else result
+    
     if tool_name == "search_houses":
         # 只保留关键字段：总数、房源列表（每个房源只保留ID、价格、区域、tags等关键信息）
-        if "total" in result:
-            compressed["total"] = result["total"]
-        if "houses" in result and isinstance(result["houses"], list):
+        # API返回格式：{"code": 0, "data": {"total": 6, "items": [...]}}
+        if "total" in actual_data:
+            compressed["total"] = actual_data["total"]
+        # 房源列表可能在 "items" 或 "houses" 字段中
+        houses_list = actual_data.get("items") or actual_data.get("houses")
+        if houses_list and isinstance(houses_list, list):
             compressed["houses"] = []
-            for house in result["houses"][:10]:  # 最多保留10个房源
-                house_compressed = {
-                    "house_id": house.get("house_id"),
-                    "price": house.get("price"),
-                    "district": house.get("district"),
-                    "area": house.get("area"),
-                    "community": house.get("community"),
-                    "bedrooms": house.get("bedrooms"),
-                    "tags": house.get("tags", [])
-                }
-                compressed["houses"].append(house_compressed)
+            for house in houses_list[:10]:  # 最多保留10个房源
+                # 只添加有有效house_id的房源
+                house_id = house.get("house_id")
+                if house_id:  # 确保house_id不为None或空字符串
+                    house_compressed = {
+                        "house_id": house_id,
+                        "price": house.get("price"),
+                        "district": house.get("district"),
+                        "area": house.get("area"),
+                        "community": house.get("community"),
+                        "bedrooms": house.get("bedrooms"),
+                        "tags": house.get("tags", [])
+                    }
+                    compressed["houses"].append(house_compressed)
     
     elif tool_name == "get_house_detail":
         # 只保留关键字段
+        # API返回格式：{"code": 0, "data": {...}}
         compressed = {
-            "house_id": result.get("house_id"),
-            "price": result.get("price"),
-            "district": result.get("district"),
-            "area": result.get("area"),
-            "community": result.get("community"),
-            "bedrooms": result.get("bedrooms"),
-            "tags": result.get("tags", []),
-            "available": result.get("available")
+            "house_id": actual_data.get("house_id"),
+            "price": actual_data.get("price"),
+            "district": actual_data.get("district"),
+            "area": actual_data.get("area"),
+            "community": actual_data.get("community"),
+            "bedrooms": actual_data.get("bedrooms"),
+            "tags": actual_data.get("tags", []),
+            "available": actual_data.get("available")
         }
     
     elif tool_name in ["get_houses_nearby", "get_houses_by_community"]:
         # 类似search_houses的压缩策略
-        if "total" in result:
-            compressed["total"] = result["total"]
-        if "houses" in result and isinstance(result["houses"], list):
+        # API返回格式：{"code": 0, "data": {"total": 6, "items": [...]}}
+        if "total" in actual_data:
+            compressed["total"] = actual_data["total"]
+        # 房源列表可能在 "items" 或 "houses" 字段中
+        houses_list = actual_data.get("items") or actual_data.get("houses")
+        if houses_list and isinstance(houses_list, list):
             compressed["houses"] = []
-            for house in result["houses"][:10]:
-                house_compressed = {
-                    "house_id": house.get("house_id"),
-                    "price": house.get("price"),
-                    "district": house.get("district"),
-                    "area": house.get("area"),
-                    "community": house.get("community"),
-                    "bedrooms": house.get("bedrooms")
-                }
-                compressed["houses"].append(house_compressed)
+            for house in houses_list[:10]:
+                # 只添加有有效house_id的房源
+                house_id = house.get("house_id")
+                if house_id:  # 确保house_id不为None或空字符串
+                    house_compressed = {
+                        "house_id": house_id,
+                        "price": house.get("price"),
+                        "district": house.get("district"),
+                        "area": house.get("area"),
+                        "community": house.get("community"),
+                        "bedrooms": house.get("bedrooms")
+                    }
+                    compressed["houses"].append(house_compressed)
     
     elif tool_name == "search_landmark":
         # 只保留地标列表的关键信息
-        if "landmarks" in result and isinstance(result["landmarks"], list):
+        # API返回格式：{"code": 0, "data": {"landmarks": [...]}}
+        landmarks_list = actual_data.get("landmarks")
+        if landmarks_list and isinstance(landmarks_list, list):
             compressed["landmarks"] = []
-            for landmark in result["landmarks"][:5]:  # 最多保留5个地标
+            for landmark in landmarks_list[:5]:  # 最多保留5个地标
                 compressed["landmarks"].append({
                     "landmark_id": landmark.get("landmark_id"),
                     "name": landmark.get("name"),
@@ -106,9 +125,11 @@ def compress_tool_result(tool_name: str, result: Dict[str, Any]) -> str:
     
     elif tool_name == "get_house_listings":
         # 只保留各平台价格信息
-        if "listings" in result and isinstance(result["listings"], list):
+        # API返回格式：{"code": 0, "data": {"listings": [...]}}
+        listings_list = actual_data.get("listings")
+        if listings_list and isinstance(listings_list, list):
             compressed["listings"] = []
-            for listing in result["listings"]:
+            for listing in listings_list:
                 compressed["listings"].append({
                     "platform": listing.get("listing_platform"),
                     "price": listing.get("price")
