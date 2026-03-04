@@ -1,6 +1,7 @@
 import json
 import httpx
 import os
+import asyncio
 from typing import List, Tuple, Optional, Dict, Any
 from agent.tools import TOOLS, search_houses, get_house_detail, get_houses_nearby, search_landmark, get_house_listings, \
     get_nearby_landmarks, get_landmarks, get_landmark_by_name, get_landmark_by_id, get_landmark_stats, \
@@ -196,22 +197,75 @@ def get_model_ip() -> str:
     return os.getenv("MODEL_IP", "localhost")
 
 
-async def build_llm_client(model_ip: Optional[str] = None, session_id: Optional[str] = None, messages: [] = None):
+def _is_retryable_error(error: Exception) -> bool:
     """
-    构建OpenAI客户端
+    判断错误是否可重试
+    
+    Args:
+        error: 异常对象
+    
+    Returns:
+        bool: 是否可重试
+    """
+    # 可重试的错误类型
+    retryable_errors = (
+        httpx.TimeoutException,
+        httpx.ConnectError,
+        httpx.NetworkError,
+        httpx.ReadError,
+        httpx.WriteError,
+        httpx.PoolTimeout,
+        ConnectionError,
+        TimeoutError,
+        OSError,  # 网络相关的OS错误
+    )
+    
+    # 检查是否是这些错误类型
+    if isinstance(error, retryable_errors):
+        return True
+    
+    # 检查错误消息中是否包含可重试的关键词
+    error_str = str(error).lower()
+    retryable_keywords = [
+        "timeout",
+        "connection",
+        "network",
+        "temporary",
+        "retry",
+        "503",  # Service Unavailable
+        "502",  # Bad Gateway
+        "504",  # Gateway Timeout
+    ]
+    
+    return any(keyword in error_str for keyword in retryable_keywords)
+
+
+async def build_llm_client(
+    model_ip: Optional[str] = None, 
+    session_id: Optional[str] = None, 
+    messages: [] = None,
+    max_retries: int = 3,
+    retry_delay: float = 1.0
+):
+    """
+    构建OpenAI客户端并调用模型，带重试机制
 
     Args:
         model_ip: 模型服务器IP地址，如果为None则从环境变量获取
                   如果为"deepseek"，则使用DeepSeek API
         session_id: 会话ID，如果提供则添加到请求头中
+        messages: 消息列表
+        max_retries: 最大重试次数，默认3次
+        retry_delay: 初始重试延迟（秒），默认1秒，会指数退避
 
     Returns:
-        OpenAI客户端实例
+        OpenAI响应对象
+
+    Raises:
+        Exception: 如果所有重试都失败，抛出最后一次的异常
     """
-    import os
-    import httpx
     from openai import AsyncOpenAI
-    import asyncio
+    from openai import APIError, APIConnectionError, APITimeoutError
 
     # 如果提供了Session-ID，则添加到默认请求头
     default_headers = {}
@@ -221,37 +275,118 @@ async def build_llm_client(model_ip: Optional[str] = None, session_id: Optional[
     # 默认使用本地模型服务器
     base_url = f"http://{model_ip}:8888/v1"
 
-    # 创建免代理的httpx客户端
-    http_client = httpx.AsyncClient(
-        timeout=60.0,  # 设置超时时间为60秒
-        proxy=None,  # 显式禁用代理
-        trust_env=False
-    )
+    last_error = None
+    current_delay = retry_delay
+    
+    # 重试循环
+    for attempt in range(max_retries + 1):  # 0到max_retries，共max_retries+1次尝试
+        http_client = None
+        try:
+            # 每次重试都创建新的客户端，避免连接问题
+            http_client = httpx.AsyncClient(
+                timeout=60.0,  # 设置超时时间为60秒
+                proxy=None,  # 显式禁用代理
+                trust_env=False
+            )
 
-    client = AsyncOpenAI(
-        base_url=base_url,
-        default_headers=default_headers,
-        api_key="dummy-key",  # 本地模型服务器不需要真实的API密钥
-        http_client=http_client  # 使用免代理的httpx客户端
-    )
+            client = AsyncOpenAI(
+                base_url=base_url,
+                default_headers=default_headers,
+                api_key="dummy-key",  # 本地模型服务器不需要真实的API密钥
+                http_client=http_client  # 使用免代理的httpx客户端
+            )
 
-    # 异步调用
-    try:
-        response = await client.chat.completions.create(
-            model="qwen3-32b",
-            messages=messages,
-            tools=TOOLS,
-            tool_choice="auto",
-            temperature=0.1,  # 降低温度以获得更确定性的输出
-            stream=False,
-            top_p=0.9  # 添加top_p参数进一步限制输出范围
-        )
-        return response
-    except Exception as e:
-        print(f"模型调用失败: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise
+            response = await client.chat.completions.create(
+                model="qwen3-32b",
+                messages=messages,
+                tools=TOOLS,
+                tool_choice="auto",
+                temperature=0.1,  # 降低温度以获得更确定性的输出
+                stream=False,
+                top_p=0.9  # 添加top_p参数进一步限制输出范围
+            )
+            
+            # 成功则关闭客户端并返回
+            if http_client:
+                await http_client.aclose()
+            
+            if attempt > 0:
+                print(f"模型调用成功（第{attempt + 1}次尝试）")
+            return response
+            
+        except (APIError, APIConnectionError, APITimeoutError) as e:
+            # OpenAI SDK 特定的错误，通常是可重试的
+            last_error = e
+            error_type = type(e).__name__
+            error_msg = str(e)
+            
+            # 关闭客户端
+            if http_client:
+                try:
+                    await http_client.aclose()
+                except:
+                    pass
+            
+            # 判断是否可重试
+            is_retryable = _is_retryable_error(e)
+            
+            # 如果是最后一次尝试或错误不可重试，则不再重试
+            if attempt >= max_retries or not is_retryable:
+                if not is_retryable:
+                    print(f"模型调用失败（不可重试的错误）: {error_type} - {error_msg}")
+                else:
+                    print(f"模型调用失败（已重试{max_retries}次）: {error_type} - {error_msg}")
+                import traceback
+                traceback.print_exc()
+                raise
+            
+            # 可重试的错误，等待后重试
+            print(f"模型调用失败（第{attempt + 1}次尝试）: {error_type} - {error_msg}")
+            print(f"等待 {current_delay:.2f} 秒后重试...")
+            
+            await asyncio.sleep(current_delay)
+            
+            # 指数退避：每次重试延迟时间翻倍，但最多不超过10秒
+            current_delay = min(current_delay * 2, 10.0)
+            
+        except Exception as e:
+            # 其他类型的错误
+            last_error = e
+            error_type = type(e).__name__
+            error_msg = str(e)
+            
+            # 关闭客户端
+            if http_client:
+                try:
+                    await http_client.aclose()
+                except:
+                    pass
+            
+            # 判断是否可重试
+            is_retryable = _is_retryable_error(e)
+            
+            # 如果是最后一次尝试或错误不可重试，则不再重试
+            if attempt >= max_retries or not is_retryable:
+                if not is_retryable:
+                    print(f"模型调用失败（不可重试的错误）: {error_type} - {error_msg}")
+                else:
+                    print(f"模型调用失败（已重试{max_retries}次）: {error_type} - {error_msg}")
+                import traceback
+                traceback.print_exc()
+                raise
+            
+            # 可重试的错误，等待后重试
+            print(f"模型调用失败（第{attempt + 1}次尝试）: {error_type} - {error_msg}")
+            print(f"等待 {current_delay:.2f} 秒后重试...")
+            
+            await asyncio.sleep(current_delay)
+            
+            # 指数退避：每次重试延迟时间翻倍，但最多不超过10秒
+            current_delay = min(current_delay * 2, 10.0)
+    
+    # 如果所有重试都失败，抛出最后一次的异常
+    if last_error:
+        raise last_error
 
 
 async def run_agent(model_ip: Optional[str] = None, history: List[dict] = None, user_message: str = "",
