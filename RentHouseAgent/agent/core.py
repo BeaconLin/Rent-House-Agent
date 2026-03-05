@@ -134,6 +134,50 @@ def _mark_session_no_houses(session_id: str) -> None:
         print(f"Session {session_id} 已标记为无房源状态，后续对话将直接返回无房源")
 
 
+def _is_simple_followup_question(user_message: str) -> bool:
+    """
+    检测用户消息是否只是简单的跟进询问（如"还有其他的吗"、"没有了吗"等）
+    
+    这类询问不需要重新搜索，可以直接返回无房源消息。
+    但如果用户提出了新的需求或修改了条件，应该让模型处理，模型会根据历史对话
+    和当前消息综合生成新的搜索参数。
+    
+    Args:
+        user_message: 用户消息
+        
+    Returns:
+        True表示只是简单的跟进询问，False表示可能是新的需求或条件修改
+    """
+    if not user_message:
+        return False
+    
+    message_lower = user_message.strip().lower()
+    
+    # 简单的跟进询问关键词
+    simple_questions = [
+        "还有其他的吗",
+        "还有吗",
+        "没有了吗",
+        "真的没有吗",
+        "没有了",
+        "只有这些吗",
+        "就这些吗",
+        "还有没有",
+        "还有吗？",
+        "还有其他的吗？",
+        "没有了吗？",
+    ]
+    
+    # 检查是否只是简单的跟进询问
+    for question in simple_questions:
+        if question in message_lower and len(message_lower) < 20:  # 限制长度，避免误判
+            return True
+    
+    # 如果消息包含明显的需求或条件（包含数字、区域名、户型等），不是简单询问
+    # 这些情况应该让模型处理
+    return False
+
+
 def _extract_house_ids_from_result(result: dict, max_count: int = 5) -> List[str]:
     """
     从工具返回结果中提取房源ID列表
@@ -293,11 +337,6 @@ async def run_agent(model_ip: Optional[str] = None, history: List[dict] = None, 
     """
     print("Run Agent!!!")
 
-    # 任务放行逻辑：如果该session已标记为"无房源"，直接返回，不调用模型和工具
-    if _is_session_no_houses(session_id):
-        print(f"Session {session_id} 已标记为无房源，直接返回无房源消息，跳过模型和工具调用")
-        return "抱歉，根据之前的搜索结果，没有找到符合条件的房源。", []
-
     # 如果没有提供history，则使用空列表
     if history is None:
         history = []
@@ -305,6 +344,18 @@ async def run_agent(model_ip: Optional[str] = None, history: List[dict] = None, 
     # 如果history为空，说明是新任务开始，重置session状态
     if len(history) == 0 and session_id:
         _reset_session_status(session_id)
+    
+    # 任务放行逻辑：如果该session已标记为"无房源"，检查用户消息类型
+    if _is_session_no_houses(session_id):
+        # 如果只是简单的跟进询问（如"还有其他的吗"），直接返回无房源消息
+        if _is_simple_followup_question(user_message):
+            print(f"Session {session_id} 已标记为无房源，用户只是简单询问，直接返回无房源消息，跳过模型和工具调用")
+            return "抱歉，根据之前的搜索结果，没有找到符合条件的房源。", []
+        else:
+            # 如果用户提出了新需求或修改了条件，重置状态，让模型根据历史对话和当前消息
+            # 综合生成新的搜索参数进行搜索
+            print(f"Session {session_id} 已标记为无房源，但用户提出了新需求或修改了条件，重置状态并让模型处理")
+            _reset_session_status(session_id)
 
     tool_results = []
 
@@ -411,6 +462,11 @@ async def run_agent(model_ip: Optional[str] = None, history: List[dict] = None, 
                 if _is_house_search_result_empty(result):
                     _mark_session_no_houses(session_id)
                     print(f"检测到搜索房源工具 {func_name} 返回空结果，已标记session {session_id} 为无房源状态")
+                else:
+                    # 如果搜索房源工具返回了结果，清除"无房源"标记（因为现在有房源了）
+                    if _is_session_no_houses(session_id):
+                        _reset_session_status(session_id)
+                        print(f"检测到搜索房源工具 {func_name} 返回了结果，清除session {session_id} 的无房源标记")
                 
                 # 优化：如果搜索房源工具返回了结果，直接生成JSON响应，避免再次调用模型
                 direct_response = _generate_house_search_response(result)
