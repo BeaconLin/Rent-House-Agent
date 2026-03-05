@@ -123,6 +123,71 @@ def _mark_session_no_houses(session_id: str) -> None:
         print(f"Session {session_id} 已标记为无房源状态，后续对话将直接返回无房源")
 
 
+def _extract_house_ids_from_result(result: dict, max_count: int = 5) -> List[str]:
+    """
+    从工具返回结果中提取房源ID列表
+
+    Args:
+        result: 工具返回的结果字典
+        max_count: 最多提取的房源数量，默认5个
+
+    Returns:
+        房源ID列表
+    """
+    house_ids = []
+    
+    if not isinstance(result, dict):
+        return house_ids
+    
+    # 尝试从houses字段提取
+    if "houses" in result:
+        houses = result.get("houses", [])
+        if isinstance(houses, list):
+            for house in houses[:max_count]:
+                if isinstance(house, dict) and "house_id" in house:
+                    house_id = house.get("house_id")
+                    if house_id:
+                        house_ids.append(house_id)
+    
+    # 尝试从data字段提取
+    if not house_ids and "data" in result:
+        data = result.get("data", [])
+        if isinstance(data, list):
+            for item in data[:max_count]:
+                if isinstance(item, dict) and "house_id" in item:
+                    house_id = item.get("house_id")
+                    if house_id:
+                        house_ids.append(house_id)
+    
+    return house_ids[:max_count]
+
+
+def _generate_house_search_response(result: dict) -> Optional[str]:
+    """
+    从搜索房源工具的结果中直接生成JSON响应，避免再次调用模型
+
+    Args:
+        result: 工具返回的结果字典
+
+    Returns:
+        如果可以直接生成响应，返回JSON字符串；否则返回None
+    """
+    # 检查结果是否为空
+    if _is_house_search_result_empty(result):
+        return json.dumps({"message": "没有找到符合条件的房源", "houses": []}, ensure_ascii=False)
+    
+    # 提取房源ID
+    house_ids = _extract_house_ids_from_result(result, max_count=5)
+    
+    if house_ids:
+        # 有房源，生成成功响应
+        message = f"为您找到{len(house_ids)}套符合条件的房源"
+        return json.dumps({"message": message, "houses": house_ids}, ensure_ascii=False)
+    else:
+        # 无法提取房源ID，返回None，让模型处理
+        return None
+
+
 async def build_llm_client(model_ip: Optional[str] = None, session_id: Optional[str] = None, messages: [] = None):
     """
     构建OpenAI客户端
@@ -325,6 +390,12 @@ async def run_agent(model_ip: Optional[str] = None, history: List[dict] = None, 
                 if _is_house_search_result_empty(result):
                     _mark_session_no_houses(session_id)
                     print(f"检测到搜索房源工具 {func_name} 返回空结果，已标记session {session_id} 为无房源状态")
+                
+                # 优化：如果搜索房源工具返回了结果，直接生成JSON响应，避免再次调用模型
+                direct_response = _generate_house_search_response(result)
+                if direct_response:
+                    print(f"搜索房源工具 {func_name} 返回结果，直接生成响应，跳过模型调用以节省token")
+                    return direct_response, tool_results
             
             messages.append({
                 "role": "tool",
