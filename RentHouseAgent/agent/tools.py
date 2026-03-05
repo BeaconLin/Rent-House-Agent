@@ -202,7 +202,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "search_houses",
-            "description": "按条件筛选房源，返回结果含tags",
+            "description": "按条件筛选房源。注意：tags字段是返回结果中的字段（用于后续过滤），不是搜索参数，不要传入tags参数。特殊需求（如养宠物、附近有公园等）需要通过返回结果中的tags字段进行过滤，不能作为搜索参数传入。",
             "parameters": {
                 "type": "object",
                 "properties": {
