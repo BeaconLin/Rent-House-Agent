@@ -1,45 +1,39 @@
-2026-03-05 11:56:18,938 - INFO - === 第2个任务 ===
-2026-03-05 11:56:18,939 - INFO - === 接收到请求 ===
-2026-03-05 11:56:18,940 - INFO - session_id:eval_t00598420_EV-002-0_1772682970834564530
-2026-03-05 11:56:18,941 - INFO - ！！！ask message:我在朝阳区上班，想找一套两居室的房子，预算3000以内，近地铁交通方便，最好精装修
-2026-03-05 11:56:18,941 - INFO - history:[]
-2026-03-05 11:56:18,942 - INFO - Run Agent!!!
-2026-03-05 11:56:18,942 - INFO - iteration times:0
-2026-03-05 11:56:26,793 - INFO - HTTP Request: POST http://7.225.29.223:8888/v1/chat/completions "HTTP/1.1 200 OK"
-2026-03-05 11:56:26,796 - INFO - Tool calls detected: True
-2026-03-05 11:56:26,797 - INFO - Processing 1 tool call(s)
-2026-03-05 11:56:26,797 - INFO - Executing tool！！！Tool func_name: search_houses，Tool arguments: {'district': '朝阳', 'bedrooms': '2', 'max_price': 3000, 'max_subway_dist': 800, 'decoration': '精装'}
-2026-03-05 11:56:26,853 - INFO - HTTP Request: GET http://7.225.29.223:8080/api/houses/by_platform?district=%E6%9C%9D%E9%98%B3&max_price=3000&bedrooms=2&decoration=%E7%B2%BE%E8%A3%85&max_subway_dist=800&page=1&page_size=10 "HTTP/1.1 200 OK"
-2026-03-05 11:56:26,856 - INFO - Tool execution result: {'code': 0, 'message': 'success', 'data': {'total': 6, 'page': 1, 'page_size': 10, 'items': [{'house_id': 'HF_1291', 'community': '金地苑9区', 'district': '朝阳', 'area': '国家体育', 'address': '国家体育路65号', 'bed...
-2026-03-05 11:56:26,858 - INFO - iteration times:1
-2026-03-05 11:56:34,233 - INFO - HTTP Request: POST http://7.225.29.223:8888/v1/chat/completions "HTTP/1.1 200 OK"
-2026-03-05 11:56:34,237 - INFO - Tool calls detected: False
-2026-03-05 11:56:34,239 - INFO - No tool calls, returning content: {"message": "为您找到以下符合条件的房源", "houses": ["HF_1291", "HF_2611", "HF_5611", "HF_7837", "HF_9817"]}...
-2026-03-05 11:56:34,240 - INFO - ！！！response_text------{"message": "为您找到以下符合条件的房源", "houses": ["HF_1291", "HF_2611", "HF_5611", "HF_7837", "HF_9817"]}
-2026-03-05 11:56:34,376 - INFO - === 接收到请求 ===
-2026-03-05 11:56:34,377 - INFO - session_id:eval_t00598420_EV-002-0_1772682970834564530
-2026-03-05 11:56:34,377 - INFO - ！！！ask message:我养了一只金毛，必须要能养狗的房子，另外希望附近有公园可以遛狗
-2026-03-05 11:56:34,378 - INFO - history:[{'role': 'user', 'content': '我在朝阳区上班，想找一套两居室的房子，预算3000以内，近地铁交通方便，最好精装修'}, {'role': 'assistant', 'content': '{"message": "为您找到以下符合条件的房源", "houses": ["HF_1291", "HF_2611", "HF_5611", "HF_7837", "HF_9817"]}'}]
-2026-03-05 11:56:34,378 - INFO - Run Agent!!!
-2026-03-05 11:56:34,379 - INFO - iteration times:0
-2026-03-05 11:56:41,633 - INFO - HTTP Request: POST http://7.225.29.223:8888/v1/chat/completions "HTTP/1.1 200 OK"
-2026-03-05 11:56:41,636 - INFO - Tool calls detected: True
-2026-03-05 11:56:41,637 - INFO - Processing 1 tool call(s)
-2026-03-05 11:56:41,637 - INFO - Executing tool！！！Tool func_name: search_houses，Tool arguments: {'district': '朝阳', 'bedrooms': '2', 'max_price': 3000, 'max_subway_dist': 800, 'decoration': '精装'}
-2026-03-05 11:56:41,666 - INFO - HTTP Request: GET http://7.225.29.223:8080/api/houses/by_platform?district=%E6%9C%9D%E9%98%B3&max_price=3000&bedrooms=2&decoration=%E7%B2%BE%E8%A3%85&max_subway_dist=800&page=1&page_size=10 "HTTP/1.1 200 OK"
-2026-03-05 11:56:41,669 - INFO - Tool execution result: {'code': 0, 'message': 'success', 'data': {'total': 6, 'page': 1, 'page_size': 10, 'items': [{'house_id': 'HF_1291', 'community': '金地苑9区', 'district': '朝阳', 'area': '国家体育', 'address': '国家体育路65号', 'bed...
-2026-03-05 11:56:41,670 - INFO - iteration times:1
-2026-03-05 11:56:49,419 - INFO - HTTP Request: POST http://7.225.29.223:8888/v1/chat/completions "HTTP/1.1 200 OK"
-2026-03-05 11:56:49,421 - INFO - Tool calls detected: False
-2026-03-05 11:56:49,422 - INFO - No tool calls, returning content: {"message": "为您找到以下符合条件的房源", "houses": ["HF_2611", "HF_3217", "HF_7837"]}...
-2026-03-05 11:56:49,422 - INFO - ！！！response_text------{"message": "为您找到以下符合条件的房源", "houses": ["HF_2611", "HF_3217", "HF_7837"]}
-2026-03-05 11:56:49,562 - INFO - === 接收到请求 ===
-2026-03-05 11:56:49,563 - INFO - session_id:eval_t00598420_EV-002-0_1772682970834564530
-2026-03-05 11:56:49,564 - INFO - ！！！ask message:平时工作太忙，希望能线上VR看房，不用跑现场
-2026-03-05 11:56:49,564 - INFO - history:[{'role': 'user', 'content': '我在朝阳区上班，想找一套两居室的房子，预算3000以内，近地铁交通方便，最好精装修'}, {'role': 'assistant', 'content': '{"message": "为您找到以下符合条件的房源", "houses": ["HF_1291", "HF_2611", "HF_5611", "HF_7837", "HF_9817"]}'}, {'role': 'user', 'content': '我养了一只金毛，必须要能养狗的房子，另外希望附近有公园可以遛狗'}, {'role': 'assistant', 'content': '{"message": "为您找到以下符合条件的房源", "houses": ["HF_2611", "HF_3217", "HF_7837"]}'}]
-2026-03-05 11:56:49,564 - INFO - Run Agent!!!
-2026-03-05 11:56:49,565 - INFO - iteration times:0
-2026-03-05 11:56:55,797 - INFO - HTTP Request: POST http://7.225.29.223:8888/v1/chat/completions "HTTP/1.1 200 OK"
-2026-03-05 11:56:55,799 - INFO - Tool calls detected: False
-2026-03-05 11:56:55,807 - INFO - No tool calls, returning content: {"message": "为您找到以下符合条件的房源", "houses": ["HF_2611", "HF_7837"]}...
-2026-03-05 11:56:55,808 - INFO - ！！！response_text------{"message": "为您找到以下符合条件的房源", "houses": ["HF_2611", "HF_7837"]}
+2026-03-05 14:48:41,134 - INFO - === 第2个任务 ===
+2026-03-05 14:48:41,134 - INFO - === 接收到请求 ===
+2026-03-05 14:48:41,134 - INFO - session_id:eval_t00598420_EV-002-0_1772693312878176639
+2026-03-05 14:48:41,134 - INFO - ！！！ask message:我在朝阳区上班，想找一套两居室的房子，预算3000以内，近地铁交通方便，最好精装修
+2026-03-05 14:48:41,135 - INFO - history:[]
+2026-03-05 14:48:41,135 - INFO - Run Agent!!!
+2026-03-05 14:48:41,135 - INFO - iteration times:0
+2026-03-05 14:48:51,059 - INFO - HTTP Request: POST http://7.225.29.223:8888/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-05 14:48:51,061 - INFO - Tool calls detected: True
+2026-03-05 14:48:51,061 - INFO - Processing 1 tool call(s)
+2026-03-05 14:48:51,061 - INFO - Executing tool！！！Tool func_name: search_houses，Tool arguments: {'district': '朝阳', 'bedrooms': '2', 'max_price': 3000, 'max_subway_dist': 800, 'decoration': '精装'}
+2026-03-05 14:48:51,111 - INFO - HTTP Request: GET http://7.225.29.223:8080/api/houses/by_platform?district=%E6%9C%9D%E9%98%B3&max_price=3000&bedrooms=2&decoration=%E7%B2%BE%E8%A3%85&max_subway_dist=800&page=1&page_size=10 "HTTP/1.1 200 OK"
+2026-03-05 14:48:51,112 - INFO - Tool execution result: {'code': 0, 'message': 'success', 'data': {'total': 6, 'page': 1, 'page_size': 10, 'items': [{'house_id': 'HF_1291', 'community': '金地苑9区', 'district': '朝阳', 'area': '国家体育', 'address': '国家体育路65号', 'bed...
+2026-03-05 14:48:51,112 - INFO - 搜索房源工具 search_houses 返回结果，直接生成响应，跳过模型调用以节省token
+2026-03-05 14:48:51,112 - INFO - ！！！response_text------{"message": "为您找到5套符合条件的房源", "houses": ["HF_1291", "HF_2611", "HF_3217", "HF_5611", "HF_7837"]}
+2026-03-05 14:48:51,259 - INFO - === 接收到请求 ===
+2026-03-05 14:48:51,260 - INFO - session_id:eval_t00598420_EV-002-0_1772693312878176639
+2026-03-05 14:48:51,260 - INFO - ！！！ask message:我养了一只金毛，必须要能养狗的房子，另外希望附近有公园可以遛狗
+2026-03-05 14:48:51,260 - INFO - history:[{'role': 'user', 'content': '我在朝阳区上班，想找一套两居室的房子，预算3000以内，近地铁交通方便，最好精装修'}, {'role': 'assistant', 'content': '{"message": "为您找到5套符合条件的房源", "houses": ["HF_1291", "HF_2611", "HF_3217", "HF_5611", "HF_7837"]}'}]
+2026-03-05 14:48:51,260 - INFO - Run Agent!!!
+2026-03-05 14:48:51,260 - INFO - iteration times:0
+2026-03-05 14:49:03,538 - INFO - HTTP Request: POST http://7.225.29.223:8888/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-05 14:49:03,538 - INFO - Tool calls detected: True
+2026-03-05 14:49:03,539 - INFO - Processing 1 tool call(s)
+2026-03-05 14:49:03,539 - INFO - Executing tool！！！Tool func_name: search_houses，Tool arguments: {'district': '朝阳', 'bedrooms': '2', 'max_price': 3000, 'max_subway_dist': 800, 'decoration': '精装'}
+2026-03-05 14:49:03,565 - INFO - HTTP Request: GET http://7.225.29.223:8080/api/houses/by_platform?district=%E6%9C%9D%E9%98%B3&max_price=3000&bedrooms=2&decoration=%E7%B2%BE%E8%A3%85&max_subway_dist=800&page=1&page_size=10 "HTTP/1.1 200 OK"
+2026-03-05 14:49:03,566 - INFO - Tool execution result: {'code': 0, 'message': 'success', 'data': {'total': 6, 'page': 1, 'page_size': 10, 'items': [{'house_id': 'HF_1291', 'community': '金地苑9区', 'district': '朝阳', 'area': '国家体育', 'address': '国家体育路65号', 'bed...
+2026-03-05 14:49:03,566 - INFO - 搜索房源工具 search_houses 返回结果，直接生成响应，跳过模型调用以节省token
+2026-03-05 14:49:03,566 - INFO - ！！！response_text------{"message": "为您找到5套符合条件的房源", "houses": ["HF_1291", "HF_2611", "HF_3217", "HF_5611", "HF_7837"]}
+2026-03-05 14:49:03,717 - INFO - === 接收到请求 ===
+2026-03-05 14:49:03,717 - INFO - session_id:eval_t00598420_EV-002-0_1772693312878176639
+2026-03-05 14:49:03,717 - INFO - ！！！ask message:平时工作太忙，希望能线上VR看房，不用跑现场
+2026-03-05 14:49:03,718 - INFO - history:[{'role': 'user', 'content': '我在朝阳区上班，想找一套两居室的房子，预算3000以内，近地铁交通方便，最好精装修'}, {'role': 'assistant', 'content': '{"message": "为您找到5套符合条件的房源", "houses": ["HF_1291", "HF_2611", "HF_3217", "HF_5611", "HF_7837"]}'}, {'role': 'user', 'content': '我养了一只金毛，必须要能养狗的房子，另外希望附近有公园可以遛狗'}, {'role': 'assistant', 'content': '{"message": "为您找到5套符合条件的房源", "houses": ["HF_1291", "HF_2611", "HF_3217", "HF_5611", "HF_7837"]}'}]
+2026-03-05 14:49:03,718 - INFO - Run Agent!!!
+2026-03-05 14:49:03,718 - INFO - iteration times:0
+2026-03-05 14:49:12,210 - INFO - HTTP Request: POST http://7.225.29.223:8888/v1/chat/completions "HTTP/1.1 200 OK"
+2026-03-05 14:49:12,211 - INFO - Tool calls detected: False
+2026-03-05 14:49:12,211 - INFO - No tool calls, returning content: {"message": "为您找到5套符合条件的房源", "houses": ["HF_1291", "HF_2611", "HF_3217", "HF_5611", "HF_7837"]}...
+2026-03-05 14:49:12,212 - INFO - ！！！response_text------{"message": "为您找到5套符合条件的房源", "houses": ["HF_1291", "HF_2611", "HF_3217", "HF_5611", "HF_7837"]}

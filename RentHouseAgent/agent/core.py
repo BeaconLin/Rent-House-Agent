@@ -227,19 +227,174 @@ def _extract_house_ids_from_result(result: dict, max_count: int = 5) -> List[str
     return house_ids[:max_count]
 
 
-def _generate_house_search_response(result: dict) -> Optional[str]:
+def _has_special_requirements(user_message: str, history: List[dict]) -> bool:
+    """
+    检测用户消息或历史对话中是否包含特殊需求
+    
+    特殊需求包括：养宠物、附近有公园、VR看房、付款方式、费用包含等
+    这些需求需要通过tags字段进行过滤，不能直接返回搜索结果
+    
+    Args:
+        user_message: 当前用户消息
+        history: 对话历史记录
+        
+    Returns:
+        True表示包含特殊需求，False表示不包含
+    """
+    # 合并所有对话内容
+    all_text = user_message.lower() if user_message else ""
+    for msg in history:
+        if isinstance(msg, dict):
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                all_text += " " + content.lower()
+    
+    # 特殊需求关键词
+    special_keywords = [
+        # 养宠物相关
+        "养狗", "养猫", "养宠物", "能养狗", "能养猫", "允许养", "可养",
+        "金毛", "宠物", "小型犬", "大型犬",
+        # 公园相关
+        "公园", "遛狗", "遛猫", "附近有公园", "近公园",
+        # VR看房相关
+        "vr", "vr看房", "线上看房", "不用跑现场", "远程看房", "视频看房",
+        # 付款方式相关
+        "月付", "季付", "半年付", "年付", "押一付", "付款方式",
+        # 费用包含相关
+        "包宽带", "包物业", "包网费", "费用包含", "宽带包含",
+        # 其他特殊需求
+        "可短租", "短租", "24小时保安", "地下车库", "车库", "停车",
+        "免中介", "免押", "房东直租"
+    ]
+    
+    # 检查是否包含特殊需求关键词
+    for keyword in special_keywords:
+        if keyword in all_text:
+            print(f"检测到特殊需求关键词: {keyword}")
+            return True
+    
+    return False
+
+
+def _filter_houses_by_tags(result: dict, special_requirements: List[str]) -> List[str]:
+    """
+    根据特殊需求和tags字段过滤房源
+    
+    Args:
+        result: 工具返回的结果字典
+        special_requirements: 特殊需求列表，如["养狗", "公园", "VR看房"]
+        
+    Returns:
+        符合条件的房源ID列表
+    """
+    house_ids = []
+    
+    if not isinstance(result, dict):
+        return house_ids
+    
+    # 获取房源列表
+    items = []
+    if "data" in result and isinstance(result["data"], dict):
+        items = result["data"].get("items", [])
+    elif "data" in result and isinstance(result["data"], list):
+        items = result["data"]
+    elif "houses" in result:
+        items = result["houses"]
+    
+    # 特殊需求与tags关键词的映射
+    requirement_to_tags = {
+        "养狗": ["允许养宠物", "可养宠物", "允许养狗", "仅限小型犬", "可养狗", "养狗"],
+        "养猫": ["允许养宠物", "可养宠物", "允许养猫", "可养猫", "养猫"],
+        "公园": ["近公园", "公园", "附近有公园"],
+        "vr看房": ["vr", "vr看房", "线上看房", "远程看房", "视频看房"],
+        "月付": ["月付", "押一付一"],
+        "季付": ["季付", "押一付三"],
+        "半年付": ["半年付", "押一付六"],
+        "年付": ["年付", "押一付十二"],
+        "包宽带": ["包宽带", "宽带", "网费"],
+        "包物业": ["包物业", "物业费"],
+        "可短租": ["可短租", "短租"],
+        "24小时保安": ["24小时保安", "保安"],
+        "地下车库": ["地下车库", "车库", "停车"],
+    }
+    
+    # 为每个房源检查tags
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        
+        house_id = item.get("house_id")
+        if not house_id:
+            continue
+        
+        tags = item.get("tags", [])
+        if not isinstance(tags, list):
+            tags = []
+        
+        # 检查是否满足所有特殊需求
+        meets_all_requirements = True
+        for req in special_requirements:
+            req_lower = req.lower()
+            # 查找对应的tags关键词
+            tag_keywords = []
+            for key, keywords in requirement_to_tags.items():
+                if key in req_lower:
+                    tag_keywords.extend(keywords)
+            
+            # 如果没有找到映射，直接使用需求本身作为关键词
+            if not tag_keywords:
+                tag_keywords = [req]
+            
+            # 检查tags中是否包含任一关键词
+            found = False
+            for tag in tags:
+                if not isinstance(tag, str):
+                    continue
+                tag_lower = tag.lower()
+                for keyword in tag_keywords:
+                    if keyword.lower() in tag_lower or tag_lower in keyword.lower():
+                        found = True
+                        break
+                if found:
+                    break
+            
+            if not found:
+                meets_all_requirements = False
+                break
+        
+        if meets_all_requirements:
+            house_ids.append(house_id)
+            if len(house_ids) >= 5:
+                break
+    
+    return house_ids
+
+
+def _generate_house_search_response(result: dict, user_message: str = "", history: List[dict] = None) -> Optional[str]:
     """
     从搜索房源工具的结果中直接生成JSON响应，避免再次调用模型
+    
+    如果用户提出了特殊需求（需要通过tags过滤），则返回None让模型处理
 
     Args:
         result: 工具返回的结果字典
+        user_message: 当前用户消息（用于检测特殊需求）
+        history: 对话历史记录（用于检测特殊需求）
 
     Returns:
-        如果可以直接生成响应，返回JSON字符串；否则返回None
+        如果可以直接生成响应，返回JSON字符串；否则返回None（让模型处理tags过滤）
     """
     # 检查结果是否为空
     if _is_house_search_result_empty(result):
         return json.dumps({"message": "没有找到符合条件的房源", "houses": []}, ensure_ascii=False)
+    
+    # 检查是否有特殊需求
+    if history is None:
+        history = []
+    
+    if _has_special_requirements(user_message, history):
+        print("检测到特殊需求，需要根据tags字段过滤，返回None让模型处理")
+        return None
     
     # 提取房源ID
     house_ids = _extract_house_ids_from_result(result, max_count=5)
@@ -359,7 +514,15 @@ async def run_agent(model_ip: Optional[str] = None, history: List[dict] = None, 
 
     tool_results = []
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [{"role": "user", "content": user_message}]
+    # 构建系统提示，如果有特殊需求则添加额外提示
+    system_prompt = SYSTEM_PROMPT
+    if _has_special_requirements(user_message, history if history else []):
+        system_prompt += "\n\n⚠️ **当前对话包含特殊需求（需要通过tags字段过滤）**\n"
+        system_prompt += "**重要提示**：调用search_houses时，建议使用较大的page_size（如20-30），以确保tags过滤后有足够的房源可选。\n"
+        system_prompt += "如果只搜索10个房源，经过tags过滤后可能符合条件的房源很少。\n"
+        print("检测到特殊需求，已在系统提示中添加page_size建议")
+
+    messages = [{"role": "system", "content": system_prompt}] + history + [{"role": "user", "content": user_message}]
 
     # 最多迭代5轮工具调用
     for _ in range(5):
@@ -468,11 +631,14 @@ async def run_agent(model_ip: Optional[str] = None, history: List[dict] = None, 
                         _reset_session_status(session_id)
                         print(f"检测到搜索房源工具 {func_name} 返回了结果，清除session {session_id} 的无房源标记")
                 
-                # 优化：如果搜索房源工具返回了结果，直接生成JSON响应，避免再次调用模型
-                direct_response = _generate_house_search_response(result)
+                # 优化：如果搜索房源工具返回了结果，检查是否有特殊需求
+                # 如果有特殊需求，需要让模型根据tags字段过滤，不能直接返回
+                direct_response = _generate_house_search_response(result, user_message, history)
                 if direct_response:
                     print(f"搜索房源工具 {func_name} 返回结果，直接生成响应，跳过模型调用以节省token")
                     return direct_response, tool_results
+                else:
+                    print(f"搜索房源工具 {func_name} 返回结果，但检测到特殊需求，需要模型根据tags字段过滤")
             
             messages.append({
                 "role": "tool",
