@@ -61,20 +61,31 @@ def _is_house_search_result_empty(result: dict) -> bool:
         return False
     
     # 检查常见的空结果格式
-    # 格式1: {"data": [], "total": 0}
-    # 格式2: {"houses": [], "total": 0}
-    # 格式3: {"data": []} 或 {"houses": []}
-    # 格式4: {"total": 0} 且没有data或houses字段，或data/houses为空
-    
-    # 检查total字段
-    if "total" in result:
-        if result.get("total", 0) == 0:
-            return True
+    # 格式1: {"data": {"total": 0, "items": []}} 或 {"data": {"total": 0}}
+    # 格式2: {"data": [], "total": 0}
+    # 格式3: {"houses": [], "total": 0}
+    # 格式4: {"data": []} 或 {"houses": []}
     
     # 检查data字段
     if "data" in result:
-        data = result.get("data", [])
-        if isinstance(data, list) and len(data) == 0:
+        data = result.get("data", {})
+        # 处理data是字典的情况（包含total和items字段）
+        if isinstance(data, dict):
+            # 检查data.total字段
+            if "total" in data and data.get("total", 0) == 0:
+                return True
+            # 检查data.items字段
+            if "items" in data:
+                items = data.get("items", [])
+                if isinstance(items, list) and len(items) == 0:
+                    return True
+        # 处理data是列表的情况（向后兼容）
+        elif isinstance(data, list) and len(data) == 0:
+            return True
+    
+    # 检查顶层total字段（向后兼容）
+    if "total" in result:
+        if result.get("total", 0) == 0:
             return True
     
     # 检查houses字段
@@ -151,8 +162,18 @@ def _extract_house_ids_from_result(result: dict, max_count: int = 5) -> List[str
     
     # 尝试从data字段提取
     if not house_ids and "data" in result:
-        data = result.get("data", [])
-        if isinstance(data, list):
+        data = result.get("data", {})
+        # 处理data是字典的情况（包含items字段）
+        if isinstance(data, dict) and "items" in data:
+            items = data.get("items", [])
+            if isinstance(items, list):
+                for item in items[:max_count]:
+                    if isinstance(item, dict) and "house_id" in item:
+                        house_id = item.get("house_id")
+                        if house_id:
+                            house_ids.append(house_id)
+        # 处理data是列表的情况（向后兼容）
+        elif isinstance(data, list):
             for item in data[:max_count]:
                 if isinstance(item, dict) and "house_id" in item:
                     house_id = item.get("house_id")
