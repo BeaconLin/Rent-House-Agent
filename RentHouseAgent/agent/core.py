@@ -1,15 +1,11 @@
 import json
 import httpx
 import os
-import asyncio
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Tuple, Optional
 from agent.tools import TOOLS, search_houses, get_house_detail, get_houses_nearby, search_landmark, get_house_listings, \
     get_nearby_landmarks, get_landmarks, get_landmark_by_name, get_landmark_by_id, get_landmark_stats, \
     get_houses_by_community, get_house_stats, rent_house, terminate_rental, take_offline
 from agent.prompts import SYSTEM_PROMPT
-
-# 对话历史最大保留轮数（每轮包含user和assistant两条消息）
-MAX_HISTORY_ROUNDS = 5  # 从10减少到5，减少token消耗
 
 TOOL_MAP = {
     "search_houses": search_houses,
@@ -29,278 +25,120 @@ TOOL_MAP = {
     "take_offline": take_offline,
 }
 
+# 定义搜索房源相关的工具名称
+HOUSE_SEARCH_TOOLS = {"search_houses", "get_houses_nearby", "get_houses_by_community"}
 
-def compress_tool_result(tool_name: str, result: Dict[str, Any]) -> str:
-    """
-    压缩工具调用结果，只保留关键字段以减少token消耗
-    
-    Args:
-        tool_name: 工具名称
-        result: 工具返回的完整结果
-    
-    Returns:
-        压缩后的JSON字符串
-    """
-    if not isinstance(result, dict):
-        return json.dumps(result, ensure_ascii=False)
-    
-    # 首先检查是否有错误信息
-    if "error" in result:
-        error_msg = result.get("error", "未知错误")
-        # 对于参数错误，提供更友好的提示，引导LLM使用正确的参数
-        if "unexpected keyword argument" in str(error_msg):
-            # 提取错误的参数名
-            import re
-            match = re.search(r"unexpected keyword argument ['\"](.*?)['\"]", str(error_msg))
-            if match:
-                wrong_param = match.group(1)
-                # 返回友好的错误信息，告诉LLM该参数不支持，应该使用其他方式
-                if wrong_param == "tags":
-                    return json.dumps({
-                        "error": "search_houses工具不支持tags参数。特殊需求（如宠物、公园等）应通过get_house_detail查看房源的tags字段来过滤，或使用get_nearby_landmarks查询周边配套。",
-                        "suggestion": "请先调用search_houses获取房源列表，然后对每个房源调用get_house_detail检查tags字段是否符合要求。"
-                    }, ensure_ascii=False)
-        # 其他错误，返回通用提示
-        return json.dumps({
-            "error": f"工具执行失败: {error_msg}",
-            "suggestion": "请检查参数是否正确，或尝试使用其他工具。"
-        }, ensure_ascii=False)
-    
-    compressed = {}
-    
-    # 处理API返回的标准格式：{"code": 0, "message": "success", "data": {...}}
-    # 如果存在data字段，则从data中提取实际数据
-    actual_data = result.get("data", result) if "data" in result else result
-    
-    if tool_name == "search_houses":
-        # 只保留关键字段：总数、房源列表（每个房源只保留ID、价格、区域、tags等关键信息）
-        # API返回格式：{"code": 0, "data": {"total": 6, "items": [...]}}
-        # 检查API返回的code，如果code不为0，说明有错误
-        if result.get("code") is not None and result.get("code") != 0:
-            return json.dumps({
-                "error": result.get("message", "API调用失败"),
-                "code": result.get("code"),
-                "suggestion": "请检查搜索条件或稍后重试。"
-            }, ensure_ascii=False)
-        
-        if "total" in actual_data:
-            compressed["total"] = actual_data["total"]
-        # 房源列表可能在 "items" 或 "houses" 字段中
-        houses_list = actual_data.get("items") or actual_data.get("houses")
-        if houses_list and isinstance(houses_list, list):
-            compressed["houses"] = []
-            for house in houses_list[:5]:  # 最多保留5个房源（从10减少到5）
-                # 只添加有有效house_id的房源
-                house_id = house.get("house_id")
-                if house_id:  # 确保house_id不为None或空字符串
-                    house_compressed = {
-                        "house_id": house_id,
-                        "price": house.get("price"),
-                        "district": house.get("district"),
-                        "area": house.get("area"),
-                        "community": house.get("community"),
-                        "bedrooms": house.get("bedrooms"),
-                        "tags": house.get("tags", [])
-                    }
-                    compressed["houses"].append(house_compressed)
-        # 如果没有房源，确保返回total=0，让LLM知道这是正常的空结果
-        if "total" not in compressed:
-            compressed["total"] = 0
-        if "houses" not in compressed:
-            compressed["houses"] = []
-    
-    elif tool_name == "get_house_detail":
-        # 只保留关键字段
-        # API返回格式：{"code": 0, "data": {...}}
-        compressed = {
-            "house_id": actual_data.get("house_id"),
-            "price": actual_data.get("price"),
-            "district": actual_data.get("district"),
-            "area": actual_data.get("area"),
-            "community": actual_data.get("community"),
-            "bedrooms": actual_data.get("bedrooms"),
-            "tags": actual_data.get("tags", []),
-            "available": actual_data.get("available")
-        }
-    
-    elif tool_name in ["get_houses_nearby", "get_houses_by_community"]:
-        # 类似search_houses的压缩策略
-        # API返回格式：{"code": 0, "data": {"total": 6, "items": [...]}}
-        if "total" in actual_data:
-            compressed["total"] = actual_data["total"]
-        # 房源列表可能在 "items" 或 "houses" 字段中
-        houses_list = actual_data.get("items") or actual_data.get("houses")
-        if houses_list and isinstance(houses_list, list):
-            compressed["houses"] = []
-            for house in houses_list[:5]:  # 最多保留5个房源（从10减少到5）
-                # 只添加有有效house_id的房源
-                house_id = house.get("house_id")
-                if house_id:  # 确保house_id不为None或空字符串
-                    house_compressed = {
-                        "house_id": house_id,
-                        "price": house.get("price"),
-                        "district": house.get("district"),
-                        "area": house.get("area"),
-                        "community": house.get("community"),
-                        "bedrooms": house.get("bedrooms")
-                    }
-                    compressed["houses"].append(house_compressed)
-    
-    elif tool_name == "search_landmark":
-        # 只保留地标列表的关键信息
-        # API返回格式：{"code": 0, "data": {"landmarks": [...]}}
-        landmarks_list = actual_data.get("landmarks")
-        if landmarks_list and isinstance(landmarks_list, list):
-            compressed["landmarks"] = []
-            for landmark in landmarks_list[:3]:  # 最多保留3个地标（从5减少到3）
-                compressed["landmarks"].append({
-                    "landmark_id": landmark.get("landmark_id"),
-                    "name": landmark.get("name"),
-                    "category": landmark.get("category")
-                })
-    
-    elif tool_name == "get_house_listings":
-        # 只保留各平台价格信息
-        # API返回格式：{"code": 0, "data": {"listings": [...]}}
-        listings_list = actual_data.get("listings")
-        if listings_list and isinstance(listings_list, list):
-            compressed["listings"] = []
-            for listing in listings_list:
-                compressed["listings"].append({
-                    "platform": listing.get("listing_platform"),
-                    "price": listing.get("price")
-                })
-    
-    else:
-        # 其他工具保留完整结果，但限制大小
-        compressed = result
-    
-    return json.dumps(compressed, ensure_ascii=False)
-
-
-def compress_history(history: List[dict]) -> List[dict]:
-    """
-    压缩对话历史，只保留最近的N轮对话
-    
-    Args:
-        history: 完整的对话历史
-    
-    Returns:
-        压缩后的对话历史
-    """
-    if not history:
-        return []
-    
-    # 计算轮数（每轮包含user和assistant两条消息）
-    rounds = []
-    current_round = []
-    
-    for msg in history:
-        if msg.get("role") == "user":
-            if current_round:
-                rounds.append(current_round)
-            current_round = [msg]
-        elif msg.get("role") in ["assistant", "tool"]:
-            current_round.append(msg)
-    
-    if current_round:
-        rounds.append(current_round)
-    
-    # 只保留最近的N轮
-    if len(rounds) > MAX_HISTORY_ROUNDS:
-        rounds = rounds[-MAX_HISTORY_ROUNDS:]
-    
-    # 展平列表
-    compressed = []
-    for round_msgs in rounds:
-        compressed.extend(round_msgs)
-    
-    return compressed
+# 全局字典：跟踪每个session_id是否已标记为"无房源"状态
+# key: session_id, value: True表示该session已标记为无房源
+_session_no_houses_status: dict[str, bool] = {}
 
 
 def get_model_ip() -> str:
     """
     获取模型服务器IP地址
-    
+
     优先级：
     1. 环境变量 MODEL_IP
     2. 否则使用默认值 "localhost"
-    
+
     Returns:
         模型服务器IP地址
     """
     return os.getenv("MODEL_IP", "localhost")
 
 
-def _is_retryable_error(error: Exception) -> bool:
+def _is_house_search_result_empty(result: dict) -> bool:
     """
-    判断错误是否可重试
-    
+    判断房源搜索结果是否为空
+
     Args:
-        error: 异常对象
-    
+        result: 工具返回的结果字典
+
     Returns:
-        bool: 是否可重试
+        True表示结果为空，False表示有结果
     """
-    # 可重试的错误类型
-    retryable_errors = (
-        httpx.TimeoutException,
-        httpx.ConnectError,
-        httpx.NetworkError,
-        httpx.ReadError,
-        httpx.WriteError,
-        httpx.PoolTimeout,
-        ConnectionError,
-        TimeoutError,
-        OSError,  # 网络相关的OS错误
-    )
+    if not isinstance(result, dict):
+        return False
     
-    # 检查是否是这些错误类型
-    if isinstance(error, retryable_errors):
-        return True
+    # 检查常见的空结果格式
+    # 格式1: {"data": [], "total": 0}
+    # 格式2: {"houses": [], "total": 0}
+    # 格式3: {"data": []} 或 {"houses": []}
+    # 格式4: {"total": 0} 且没有data或houses字段，或data/houses为空
     
-    # 检查错误消息中是否包含可重试的关键词
-    error_str = str(error).lower()
-    retryable_keywords = [
-        "timeout",
-        "connection",
-        "network",
-        "temporary",
-        "retry",
-        "503",  # Service Unavailable
-        "502",  # Bad Gateway
-        "504",  # Gateway Timeout
-    ]
+    # 检查total字段
+    if "total" in result:
+        if result.get("total", 0) == 0:
+            return True
     
-    return any(keyword in error_str for keyword in retryable_keywords)
+    # 检查data字段
+    if "data" in result:
+        data = result.get("data", [])
+        if isinstance(data, list) and len(data) == 0:
+            return True
+    
+    # 检查houses字段
+    if "houses" in result:
+        houses = result.get("houses", [])
+        if isinstance(houses, list) and len(houses) == 0:
+            return True
+    
+    return False
 
 
-async def build_llm_client(
-    model_ip: Optional[str] = None, 
-    session_id: Optional[str] = None, 
-    messages: [] = None,
-    max_retries: int = 3,
-    retry_delay: float = 1.0
-):
+def _reset_session_status(session_id: str) -> None:
     """
-    构建OpenAI客户端并调用模型，带重试机制
+    重置session的状态（当开始新任务时调用）
+
+    Args:
+        session_id: 会话ID
+    """
+    if session_id in _session_no_houses_status:
+        del _session_no_houses_status[session_id]
+        print(f"Session {session_id} 状态已重置（新任务开始）")
+
+
+def _is_session_no_houses(session_id: str) -> bool:
+    """
+    检查session是否已标记为"无房源"状态
+
+    Args:
+        session_id: 会话ID
+
+    Returns:
+        True表示该session已标记为无房源
+    """
+    return _session_no_houses_status.get(session_id, False)
+
+
+def _mark_session_no_houses(session_id: str) -> None:
+    """
+    标记session为"无房源"状态
+
+    Args:
+        session_id: 会话ID
+    """
+    if session_id:
+        _session_no_houses_status[session_id] = True
+        print(f"Session {session_id} 已标记为无房源状态，后续对话将直接返回无房源")
+
+
+async def build_llm_client(model_ip: Optional[str] = None, session_id: Optional[str] = None, messages: [] = None):
+    """
+    构建OpenAI客户端
 
     Args:
         model_ip: 模型服务器IP地址，如果为None则从环境变量获取
                   如果为"deepseek"，则使用DeepSeek API
         session_id: 会话ID，如果提供则添加到请求头中
-        messages: 消息列表
-        max_retries: 最大重试次数，默认3次
-        retry_delay: 初始重试延迟（秒），默认1秒，会指数退避
 
     Returns:
-        OpenAI响应对象
-
-    Raises:
-        Exception: 如果所有重试都失败，抛出最后一次的异常
+        OpenAI客户端实例
     """
+    import os
+    import httpx
     from openai import AsyncOpenAI
-    from openai import APIError, APIConnectionError, APITimeoutError
+    import asyncio
 
     # 如果提供了Session-ID，则添加到默认请求头
     default_headers = {}
@@ -310,119 +148,44 @@ async def build_llm_client(
     # 默认使用本地模型服务器
     base_url = f"http://{model_ip}:8888/v1"
 
-    last_error = None
-    current_delay = retry_delay
-    
-    # 重试循环
-    for attempt in range(max_retries + 1):  # 0到max_retries，共max_retries+1次尝试
-        http_client = None
-        try:
-            # 每次重试都创建新的客户端，避免连接问题
-            http_client = httpx.AsyncClient(
-                timeout=60.0,  # 设置超时时间为60秒
-                proxy=None,  # 显式禁用代理
-                trust_env=False
-            )
+    # 创建免代理的httpx客户端
+    http_client = httpx.AsyncClient(
+        timeout=60.0,  # 设置超时时间为60秒
+        proxy=None,  # 显式禁用代理
+        trust_env=False
+    )
 
-            client = AsyncOpenAI(
-                base_url=base_url,
-                default_headers=default_headers,
-                api_key="dummy-key",  # 本地模型服务器不需要真实的API密钥
-                http_client=http_client  # 使用免代理的httpx客户端
-            )
+    client = AsyncOpenAI(
+        base_url=base_url,
+        default_headers=default_headers,
+        api_key="dummy-key",  # 本地模型服务器不需要真实的API密钥
+        http_client=http_client  # 使用免代理的httpx客户端
+    )
 
-            response = await client.chat.completions.create(
-                model="qwen3-32b",
-                messages=messages,
-                tools=TOOLS,
-                tool_choice="auto",
-                temperature=0.1,  # 降低温度以获得更确定性的输出
-                stream=False,
-                top_p=0.9,  # 添加top_p参数进一步限制输出范围
-                max_tokens=500  # 限制最大输出token数，减少token消耗
-            )
-            
-            # 成功则关闭客户端并返回
-            if http_client:
-                await http_client.aclose()
-            
-            if attempt > 0:
-                print(f"模型调用成功（第{attempt + 1}次尝试）")
-            return response
-            
-        except (APIError, APIConnectionError, APITimeoutError) as e:
-            # OpenAI SDK 特定的错误，通常是可重试的
-            last_error = e
-            error_type = type(e).__name__
-            error_msg = str(e)
-            
-            # 关闭客户端
-            if http_client:
-                try:
-                    await http_client.aclose()
-                except:
-                    pass
-            
-            # 判断是否可重试
-            is_retryable = _is_retryable_error(e)
-            
-            # 如果是最后一次尝试或错误不可重试，则不再重试
-            if attempt >= max_retries or not is_retryable:
-                if not is_retryable:
-                    print(f"模型调用失败（不可重试的错误）: {error_type} - {error_msg}")
-                else:
-                    print(f"模型调用失败（已重试{max_retries}次）: {error_type} - {error_msg}")
-                import traceback
-                traceback.print_exc()
-                raise
-            
-            # 可重试的错误，等待后重试
-            print(f"模型调用失败（第{attempt + 1}次尝试）: {error_type} - {error_msg}")
-            print(f"等待 {current_delay:.2f} 秒后重试...")
-            
-            await asyncio.sleep(current_delay)
-            
-            # 指数退避：每次重试延迟时间翻倍，但最多不超过10秒
-            current_delay = min(current_delay * 2, 10.0)
-            
-        except Exception as e:
-            # 其他类型的错误
-            last_error = e
-            error_type = type(e).__name__
-            error_msg = str(e)
-            
-            # 关闭客户端
-            if http_client:
-                try:
-                    await http_client.aclose()
-                except:
-                    pass
-            
-            # 判断是否可重试
-            is_retryable = _is_retryable_error(e)
-            
-            # 如果是最后一次尝试或错误不可重试，则不再重试
-            if attempt >= max_retries or not is_retryable:
-                if not is_retryable:
-                    print(f"模型调用失败（不可重试的错误）: {error_type} - {error_msg}")
-                else:
-                    print(f"模型调用失败（已重试{max_retries}次）: {error_type} - {error_msg}")
-                import traceback
-                traceback.print_exc()
-                raise
-            
-            # 可重试的错误，等待后重试
-            print(f"模型调用失败（第{attempt + 1}次尝试）: {error_type} - {error_msg}")
-            print(f"等待 {current_delay:.2f} 秒后重试...")
-            
-            await asyncio.sleep(current_delay)
-            
-            # 指数退避：每次重试延迟时间翻倍，但最多不超过10秒
-            current_delay = min(current_delay * 2, 10.0)
-    
-    # 如果所有重试都失败，抛出最后一次的异常
-    if last_error:
-        raise last_error
+    # 异步调用
+    try:
+        chat_template_kwargs = {
+            "enable_thinking": False
+        }
+
+        response = await client.chat.completions.create(
+            model="qwen3-32b",
+            messages=messages,
+            tools=TOOLS,
+            tool_choice="auto",
+            temperature=0.1,  # 降低温度以获得更确定性的输出
+            stream=False,
+            top_p=0.9,  # 添加top_p参数进一步限制输出范围
+            extra_body={
+                "chat_template_kwargs": chat_template_kwargs
+            }
+        )
+        return response
+    except Exception as e:
+        print(f"模型调用失败: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 async def run_agent(model_ip: Optional[str] = None, history: List[dict] = None, user_message: str = "",
@@ -444,19 +207,25 @@ async def run_agent(model_ip: Optional[str] = None, history: List[dict] = None, 
     """
     print("Run Agent!!!")
 
+    # 任务放行逻辑：如果该session已标记为"无房源"，直接返回，不调用模型和工具
+    if _is_session_no_houses(session_id):
+        print(f"Session {session_id} 已标记为无房源，直接返回无房源消息，跳过模型和工具调用")
+        return "抱歉，根据之前的搜索结果，没有找到符合条件的房源。", []
+
     # 如果没有提供history，则使用空列表
     if history is None:
         history = []
-
-    # 压缩对话历史
-    history = compress_history(history)
+    
+    # 如果history为空，说明是新任务开始，重置session状态
+    if len(history) == 0 and session_id:
+        _reset_session_status(session_id)
 
     tool_results = []
 
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history + [{"role": "user", "content": user_message}]
 
-    # 最多迭代3轮工具调用（从5减少到3，减少模型调用次数）
-    for _ in range(3):
+    # 最多迭代5轮工具调用
+    for _ in range(5):
         # 使用原有的OpenAI客户端
         print(f"iteration times:{_}")
         try:
@@ -551,12 +320,16 @@ async def run_agent(model_ip: Optional[str] = None, history: List[dict] = None, 
 
             tool_results.append({"tool": func_name, "args": func_args_str, "result": result})
             
-            # 压缩工具调用结果以减少token消耗
-            compressed_result = compress_tool_result(func_name, result)
+            # 任务放行逻辑：如果调用的是搜索房源工具且结果为空，标记该session为"无房源"
+            if func_name in HOUSE_SEARCH_TOOLS:
+                if _is_house_search_result_empty(result):
+                    _mark_session_no_houses(session_id)
+                    print(f"检测到搜索房源工具 {func_name} 返回空结果，已标记session {session_id} 为无房源状态")
+            
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc.id,
-                "content": compressed_result
+                "content": json.dumps(result, ensure_ascii=False)
             })
 
     return "处理超时，请重试", tool_results
